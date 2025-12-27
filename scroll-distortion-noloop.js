@@ -9,7 +9,7 @@ class ScrollDistortionEffect {
         this.config = {
             parent: options.parent,
             images: options.images || [],
-            displacementImage: options.displacementImage,
+            displacementImages: options.displacementImages || options.displacementImage ? [options.displacementImage] : [],
             intensity: options.intensity || 0.4,
             transitionSpeed: options.transitionSpeed || 1.2,
             easing: options.easing || 'easeInOut',
@@ -20,6 +20,9 @@ class ScrollDistortionEffect {
         this.isTransitioning = false;
         this.progress = 0;
         this.targetProgress = 0;
+        
+        // Store displacement textures array
+        this.displacementTextures = [];
 
         // Initialize Three.js scene
         this.initScene();
@@ -70,7 +73,8 @@ class ScrollDistortionEffect {
         this.textures = [];
         this.textureResolutions = [];
         let loadedImageCount = 0;
-        let loadedDisplacement = false;
+        let loadedDisplacementCount = 0;
+        const totalDisplacementMaps = this.config.displacementImages.length;
 
         this.config.images.forEach((imageSrc, index) => {
             loader.load(
@@ -86,7 +90,7 @@ class ScrollDistortionEffect {
                     }
                     loadedImageCount++;
 
-                    if (loadedImageCount >= 2 && loadedDisplacement) {
+                    if (loadedImageCount >= 2 && loadedDisplacementCount >= totalDisplacementMaps) {
                         this.onTexturesLoaded();
                     }
                 },
@@ -97,28 +101,37 @@ class ScrollDistortionEffect {
             );
         });
 
-        // Load displacement texture
-        loader.load(
-            this.config.displacementImage, 
-            (texture) => {
-                texture.wrapS = THREE.ClampToEdgeWrapping;
-                texture.wrapT = THREE.ClampToEdgeWrapping;
-                this.displacementTexture = texture;
-                loadedDisplacement = true;
+        // Load all displacement textures
+        if (this.config.displacementImages.length > 0) {
+            this.config.displacementImages.forEach((displacementSrc, index) => {
+                loader.load(
+                    displacementSrc, 
+                    (texture) => {
+                        texture.wrapS = THREE.ClampToEdgeWrapping;
+                        texture.wrapT = THREE.ClampToEdgeWrapping;
+                        this.displacementTextures[index] = texture;
+                        loadedDisplacementCount++;
 
-                if (loadedImageCount >= 2) {
-                    this.onTexturesLoaded();
-                }
-            },
-            undefined,
-            (error) => {
-                console.error('Failed to load displacement map:', this.config.displacementImage, error);
-            }
-        );
+                        // Use first displacement as default
+                        if (index === 0) {
+                            this.displacementTexture = texture;
+                        }
+
+                        if (loadedImageCount >= 2 && loadedDisplacementCount >= totalDisplacementMaps) {
+                            this.onTexturesLoaded();
+                        }
+                    },
+                    undefined,
+                    (error) => {
+                        console.error(`Failed to load displacement map ${index}:`, displacementSrc, error);
+                    }
+                );
+            });
+        }
     }
 
     onTexturesLoaded() {
-        // Wait for at least first 2 image textures and displacement to load
+        // Wait for at least first 2 image textures and at least one displacement to load
         if (!this.textures[0] || !this.textures[1] || !this.displacementTexture || this.material) {
             return;
         }
@@ -131,6 +144,22 @@ class ScrollDistortionEffect {
             this.applyInitialImage(this.pendingInitialIndex);
             this.pendingInitialIndex = undefined;
         }
+    }
+
+    // Get displacement texture index based on target state
+    // States 1-3 (indices 0-2): displacement 0
+    // States 4-7 (indices 3-6): displacement 1
+    // States 8-11 (indices 7-10): displacement 2
+    getDisplacementIndex(targetIndex) {
+        if (targetIndex >= 0 && targetIndex <= 2) {
+            return 0; // First displacement for states 1-3
+        } else if (targetIndex >= 3 && targetIndex <= 6) {
+            return 1; // Second displacement for states 4-7
+        } else if (targetIndex >= 7 && targetIndex <= 10) {
+            return 2; // Third displacement for states 8-11
+        }
+        // Fallback to first displacement
+        return 0;
     }
 
     createMaterial() {
@@ -303,6 +332,13 @@ class ScrollDistortionEffect {
         this.startTime = Date.now();
         this.targetIndex = targetIndex;
 
+        // Select displacement texture based on target index
+        const displacementIndex = this.getDisplacementIndex(targetIndex);
+        if (this.displacementTextures[displacementIndex]) {
+            this.displacementTexture = this.displacementTextures[displacementIndex];
+            this.material.uniforms.displacement.value = this.displacementTexture;
+        }
+
         // Update textures
         this.material.uniforms.texture1.value = this.textures[this.currentIndex];
         this.material.uniforms.texture2.value = this.textures[targetIndex];
@@ -401,26 +437,51 @@ class ScrollDistortionEffect {
         this.config.transitionSpeed = value;
     }
 
-    // Update displacement map dynamically
-    setDisplacementImage(url) {
+    // Update displacement maps dynamically (accepts array of URLs)
+    setDisplacementImages(urls) {
+        if (!Array.isArray(urls) || urls.length === 0) {
+            console.error('setDisplacementImages: Invalid urls array');
+            return;
+        }
+
         const loader = new THREE.TextureLoader();
         loader.crossOrigin = 'anonymous';
         const self = this;
-        loader.load(
-            url,
-            function(texture) {
-                texture.wrapS = THREE.ClampToEdgeWrapping;
-                texture.wrapT = THREE.ClampToEdgeWrapping;
-                self.displacementTexture = texture;
-                if (self.material) {
-                    self.material.uniforms.displacement.value = texture;
+        let loadedCount = 0;
+        const total = urls.length;
+
+        // Dispose old displacement textures
+        if (this.displacementTextures && this.displacementTextures.length > 0) {
+            this.displacementTextures.forEach(texture => {
+                if (texture) texture.dispose();
+            });
+        }
+
+        this.displacementTextures = [];
+        this.config.displacementImages = urls;
+
+        urls.forEach((url, index) => {
+            loader.load(
+                url,
+                function(texture) {
+                    texture.wrapS = THREE.ClampToEdgeWrapping;
+                    texture.wrapT = THREE.ClampToEdgeWrapping;
+                    self.displacementTextures[index] = texture;
+                    
+                    // Use first as default
+                    if (index === 0) {
+                        self.displacementTexture = texture;
+                        if (self.material) {
+                            self.material.uniforms.displacement.value = texture;
+                        }
+                    }
+                },
+                undefined,
+                function(error) {
+                    console.error(`Failed to load displacement map ${index}:`, url, error);
                 }
-            },
-            undefined,
-            function(error) {
-                console.error('Failed to load displacement map:', url, error);
-            }
-        );
+            );
+        });
     }
 
     // Get current index
@@ -472,7 +533,7 @@ class ScrollDistortionEffect {
                     }
                     loadedImageCount++;
 
-                    // If we have at least 2 images and displacement loaded, we can initialize
+                    // If we have at least 2 images and at least one displacement loaded, we can initialize
                     if (loadedImageCount >= 2 && self.displacementTexture) {
                         // Update material textures if it exists
                         if (self.material) {
@@ -525,6 +586,13 @@ class ScrollDistortionEffect {
 
         const safeIndex = Math.max(0, Math.min(index, this.config.images.length - 1));
         
+        // Set displacement texture based on initial index
+        const displacementIndex = this.getDisplacementIndex(safeIndex);
+        if (this.displacementTextures[displacementIndex]) {
+            this.displacementTexture = this.displacementTextures[displacementIndex];
+            this.material.uniforms.displacement.value = this.displacementTexture;
+        }
+        
         // Set textures without transition
         this.material.uniforms.texture1.value = this.textures[safeIndex];
         const nextIndex = Math.min(safeIndex + 1, this.config.images.length - 1);
@@ -548,7 +616,11 @@ class ScrollDistortionEffect {
         }
         
         this.textures.forEach(texture => texture.dispose());
-        if (this.displacementTexture) this.displacementTexture.dispose();
+        if (this.displacementTextures && this.displacementTextures.length > 0) {
+            this.displacementTextures.forEach(texture => {
+                if (texture) texture.dispose();
+            });
+        }
         
         this.renderer.dispose();
         this.config.parent.removeChild(this.renderer.domElement);

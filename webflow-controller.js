@@ -8,8 +8,8 @@ class WebflowGLController {
         this.config = {
             containerId: config.containerId || 'gl-container',
             controllerId: config.controllerId || 'gl-controller',
-            imageUrls: config.imageUrls || [], // Array of 13 image URLs
-            displacementImageUrl: config.displacementImageUrl || '',
+            imageUrls: config.imageUrls || [], // Array of 11 image URLs
+            displacementImageUrls: config.displacementImageUrls || [], // Array of 3 displacement image URLs
             intensity: config.intensity || 0.4,
             transitionSpeed: config.transitionSpeed || 1.2,
             scrollLockDuration: config.scrollLockDuration || 1200
@@ -64,24 +64,34 @@ class WebflowGLController {
 
     initEngine(container) {
         // Create engine instance (it will need at least 2 images initially)
-        // We'll update it with all 13 images after initialization
+        // We'll update it with all 11 images after initialization
         const initialImages = this.config.imageUrls.length >= 2 
             ? [this.config.imageUrls[0], this.config.imageUrls[1]]
             : this.config.imageUrls;
 
+        // Use first displacement as initial (or empty array if not provided)
+        const initialDisplacement = this.config.displacementImageUrls.length > 0
+            ? [this.config.displacementImageUrls[0]]
+            : [];
+
         this.engine = new ScrollDistortionEffect({
             parent: container,
             images: initialImages,
-            displacementImage: this.config.displacementImageUrl,
+            displacementImages: initialDisplacement,
             intensity: this.config.intensity,
             transitionSpeed: this.config.transitionSpeed
         });
 
-        // Load all 13 images if provided
-        if (this.config.imageUrls.length > 2) {
+        // Load all 11 images and all 3 displacement maps if provided
+        if (this.config.imageUrls.length > 2 || this.config.displacementImageUrls.length > 1) {
             // Wait a bit for initial setup, then load all images
             setTimeout(() => {
-                this.engine.setImages(this.config.imageUrls);
+                if (this.config.imageUrls.length > 2) {
+                    this.engine.setImages(this.config.imageUrls);
+                }
+                if (this.config.displacementImageUrls.length === 3) {
+                    this.engine.setDisplacementImages(this.config.displacementImageUrls);
+                }
             }, 100);
         }
     }
