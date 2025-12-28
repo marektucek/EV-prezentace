@@ -14,7 +14,9 @@ class WebflowGLController {
                 : [], // Array of 3 displacement image URLs (filtered to remove invalid entries)
             intensity: config.intensity || 0.4,
             transitionSpeed: config.transitionSpeed || 1.2,
-            scrollLockDuration: config.scrollLockDuration || 1200
+            scrollLockDuration: config.scrollLockDuration || 1200,
+            contentSectionSelector: config.contentSectionSelector || null, // Optional: CSS selector for content sections (e.g., '.content-section')
+            contentSectionPrefix: config.contentSectionPrefix || 'section-' // Prefix for section IDs/classes (e.g., 'section-1', 'section-2')
         };
 
         this.engine = null;
@@ -22,6 +24,7 @@ class WebflowGLController {
         this.scrollLocked = false;
         this.scrollUnlockTimer = null;
         this.currentState = null;
+        this.isInitializing = true; // Flag to prevent observer from firing during initialization
 
         // Initialize
         this.init();
@@ -58,11 +61,20 @@ class WebflowGLController {
         // This ensures we know which state to show before engine setup
         this.readInitialState(controller);
 
+        // Set initial content section visibility
+        this.updateContentSections(this.currentState || 0);
+
         // Initialize WebGL engine (will use the initial state we just read)
         this.initEngine(container);
 
         // Setup MutationObserver to watch for class changes
         this.setupObserver(controller);
+
+        // Mark initialization as complete after a short delay
+        // This allows the initial state to settle before observer becomes active
+        setTimeout(() => {
+            this.isInitializing = false;
+        }, 500);
     }
 
     initEngine(container) {
@@ -143,6 +155,11 @@ class WebflowGLController {
     }
 
     handleClassChange(controller) {
+        // Ignore changes during initialization to prevent chaos on reload
+        if (this.isInitializing) {
+            return;
+        }
+
         const stateNumber = this.extractStateNumber(controller);
         
         if (stateNumber !== null && stateNumber !== this.currentState) {
@@ -182,6 +199,9 @@ class WebflowGLController {
             return;
         }
 
+        // Update content sections if configured
+        this.updateContentSections(index);
+
         // Lock scroll
         this.lockScroll();
 
@@ -191,6 +211,25 @@ class WebflowGLController {
 
         // Auto-unlock after duration (safety mechanism)
         this.scheduleScrollUnlock();
+    }
+
+    // Update content sections visibility based on state (1-based state number)
+    updateContentSections(stateIndex) {
+        if (!this.config.contentSectionSelector) {
+            return; // Not configured, skip
+        }
+
+        const stateNumber = stateIndex + 1; // Convert to 1-based (state 1, 2, etc.)
+        const sections = document.querySelectorAll(this.config.contentSectionSelector);
+        
+        sections.forEach((section, index) => {
+            const sectionNumber = index + 1;
+            if (sectionNumber === stateNumber) {
+                section.style.display = 'block';
+            } else {
+                section.style.display = 'none';
+            }
+        });
     }
 
     lockScroll() {
