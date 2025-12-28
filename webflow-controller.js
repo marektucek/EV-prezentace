@@ -15,8 +15,8 @@ class WebflowGLController {
             intensity: config.intensity || 0.4,
             transitionSpeed: config.transitionSpeed || 1.2,
             scrollLockDuration: config.scrollLockDuration || 1200,
-            contentSectionSelector: config.contentSectionSelector || null, // Optional: CSS selector for content sections (e.g., '.content-section')
-            contentSectionPrefix: config.contentSectionPrefix || 'section-' // Prefix for section IDs/classes (e.g., 'section-1', 'section-2')
+            slideAttribute: config.slideAttribute || 'slide', // Attribute name for slide elements (e.g., 'slide')
+            slideContentClassPrefix: config.slideContentClassPrefix || 'slide' // Prefix for slide content classes (e.g., 'slide1-content', 'slide2-content')
         };
 
         this.engine = null;
@@ -215,21 +215,26 @@ class WebflowGLController {
 
     // Update content sections visibility based on state (1-based state number)
     updateContentSections(stateIndex) {
-        if (!this.config.contentSectionSelector) {
+        if (!this.config.slideAttribute) {
             return; // Not configured, skip
         }
 
         const stateNumber = stateIndex + 1; // Convert to 1-based (state 1, 2, etc.)
-        const sections = document.querySelectorAll(this.config.contentSectionSelector);
         
-        sections.forEach((section, index) => {
-            const sectionNumber = index + 1;
-            if (sectionNumber === stateNumber) {
-                section.style.display = 'block';
-            } else {
-                section.style.display = 'none';
-            }
+        // Hide all elements with the slide attribute
+        const allSlides = document.querySelectorAll(`[${this.config.slideAttribute}]`);
+        allSlides.forEach(slide => {
+            slide.style.display = 'none';
         });
+        
+        // Show the specific slide content for this state
+        const targetSlideClass = `${this.config.slideContentClassPrefix}${stateNumber}-content`;
+        const targetSlide = document.querySelector(`.${targetSlideClass}`);
+        if (targetSlide) {
+            targetSlide.style.display = 'block';
+        } else {
+            console.warn(`Slide content element with class "${targetSlideClass}" not found`);
+        }
     }
 
     lockScroll() {
