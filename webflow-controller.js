@@ -9,7 +9,9 @@ class WebflowGLController {
             containerId: config.containerId || 'gl-container',
             controllerId: config.controllerId || 'gl-controller',
             imageUrls: config.imageUrls || [], // Array of 11 image URLs
-            displacementImageUrls: config.displacementImageUrls || [], // Array of 3 displacement image URLs
+            displacementImageUrls: Array.isArray(config.displacementImageUrls) 
+                ? config.displacementImageUrls.filter(url => url && typeof url === 'string' && url.trim() !== '')
+                : [], // Array of 3 displacement image URLs (filtered to remove invalid entries)
             intensity: config.intensity || 0.4,
             transitionSpeed: config.transitionSpeed || 1.2,
             scrollLockDuration: config.scrollLockDuration || 1200

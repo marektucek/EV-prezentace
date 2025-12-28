@@ -74,7 +74,11 @@ class ScrollDistortionEffect {
         this.textureResolutions = [];
         let loadedImageCount = 0;
         let loadedDisplacementCount = 0;
-        const totalDisplacementMaps = this.config.displacementImages.length;
+        
+        // Count valid displacement maps (for initialization check)
+        const validDisplacementCount = this.config.displacementImages.filter(
+            url => url && typeof url === 'string' && url.trim() !== ''
+        ).length;
 
         this.config.images.forEach((imageSrc, index) => {
             loader.load(
@@ -90,7 +94,7 @@ class ScrollDistortionEffect {
                     }
                     loadedImageCount++;
 
-                    if (loadedImageCount >= 2 && loadedDisplacementCount >= totalDisplacementMaps) {
+                    if (loadedImageCount >= 2 && loadedDisplacementCount >= validDisplacementCount && validDisplacementCount > 0) {
                         this.onTexturesLoaded();
                     }
                 },
@@ -101,9 +105,15 @@ class ScrollDistortionEffect {
             );
         });
 
-        // Load all displacement textures
+        // Load all displacement textures (preserving original indices)
         if (this.config.displacementImages.length > 0) {
             this.config.displacementImages.forEach((displacementSrc, index) => {
+                // Skip if displacement URL is invalid
+                if (!displacementSrc || typeof displacementSrc !== 'string' || displacementSrc.trim() === '') {
+                    console.warn(`Skipping invalid displacement map ${index}:`, displacementSrc);
+                    return;
+                }
+
                 loader.load(
                     displacementSrc, 
                     (texture) => {
@@ -117,7 +127,7 @@ class ScrollDistortionEffect {
                             this.displacementTexture = texture;
                         }
 
-                        if (loadedImageCount >= 2 && loadedDisplacementCount >= totalDisplacementMaps) {
+                        if (loadedImageCount >= 2 && loadedDisplacementCount >= validDisplacementCount && validDisplacementCount > 0) {
                             this.onTexturesLoaded();
                         }
                     },
@@ -461,6 +471,12 @@ class ScrollDistortionEffect {
         this.config.displacementImages = urls;
 
         urls.forEach((url, index) => {
+            // Skip if displacement URL is invalid
+            if (!url || typeof url !== 'string' || url.trim() === '') {
+                console.warn(`Skipping invalid displacement map ${index} in setDisplacementImages:`, url);
+                return;
+            }
+
             loader.load(
                 url,
                 function(texture) {
