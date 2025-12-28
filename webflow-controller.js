@@ -69,29 +69,55 @@ class WebflowGLController {
         // Store initial state index before any async operations
         const initialStateIndex = this.currentState !== null ? this.currentState : 0;
         
-        // Create engine instance with all images from the start
-        // This ensures proper initialization regardless of initial state
+        // Create engine instance (it will need at least 2 images initially)
+        // We'll update it with all 11 images after initialization
+        const initialImages = this.config.imageUrls.length >= 2 
+            ? [this.config.imageUrls[0], this.config.imageUrls[1]]
+            : this.config.imageUrls;
+
+        // Use first displacement as initial (or empty array if not provided)
+        const initialDisplacement = this.config.displacementImageUrls.length > 0
+            ? [this.config.displacementImageUrls[0]]
+            : [];
+
         this.engine = new ScrollDistortionEffect({
             parent: container,
-            images: this.config.imageUrls,
-            displacementImages: this.config.displacementImageUrls.length > 0
-                ? [this.config.displacementImageUrls[0]] // Start with first, will load all 3 later
-                : [],
+            images: initialImages,
+            displacementImages: initialDisplacement,
             intensity: this.config.intensity,
             transitionSpeed: this.config.transitionSpeed
         });
 
-        // Set the initial image index - it will wait for textures if needed
-        if (initialStateIndex !== 0) {
-            this.engine.setInitialImage(initialStateIndex);
-        }
-
-        // Load all 3 displacement maps if provided
-        if (this.config.displacementImageUrls.length === 3) {
-            // Wait a bit for initial setup, then load all displacement maps
+        // Load all 11 images and all 3 displacement maps if provided
+        if (this.config.imageUrls.length > 2 || this.config.displacementImageUrls.length > 1) {
+            // Wait a bit for initial setup, then load all images
             setTimeout(() => {
-                this.engine.setDisplacementImages(this.config.displacementImageUrls);
+                if (this.config.imageUrls.length > 2) {
+                    this.engine.setImages(this.config.imageUrls);
+                }
+                if (this.config.displacementImageUrls.length === 3) {
+                    this.engine.setDisplacementImages(this.config.displacementImageUrls);
+                }
+                
+                // After images are loaded, set the initial image if needed
+                // Use a longer delay to ensure textures have time to load
+                if (initialStateIndex !== 0) {
+                    setTimeout(() => {
+                        if (this.engine) {
+                            this.engine.setInitialImage(initialStateIndex);
+                        }
+                    }, 500);
+                }
             }, 100);
+        } else {
+            // If we have 2 or fewer images, set initial image immediately if needed
+            if (initialStateIndex !== 0) {
+                setTimeout(() => {
+                    if (this.engine) {
+                        this.engine.setInitialImage(initialStateIndex);
+                    }
+                }, 200);
+            }
         }
     }
 

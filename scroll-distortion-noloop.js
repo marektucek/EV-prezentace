@@ -94,25 +94,7 @@ class ScrollDistortionEffect {
                     }
                     loadedImageCount++;
 
-                    // Check if we should try to initialize
-                    const shouldTryInit = loadedImageCount >= 2 && loadedDisplacementCount >= validDisplacementCount && validDisplacementCount > 0;
-                    if (shouldTryInit && !this.material) {
-                        // If we have a pending initial index, check if that texture is loaded
-                        if (this.pendingInitialIndex !== undefined && this.pendingInitialIndex >= 0) {
-                            if (this.textures[this.pendingInitialIndex]) {
-                                // Pending texture is loaded, initialize now
-                                this.onTexturesLoaded();
-                            }
-                            // Otherwise, keep waiting - will be triggered when that texture loads
-                        } else {
-                            // No pending index, normal initialization
-                            this.onTexturesLoaded();
-                        }
-                    }
-                    
-                    // Also check if we just loaded the pending texture and should initialize
-                    if (this.pendingInitialIndex !== undefined && this.pendingInitialIndex === index && 
-                        loadedImageCount >= 2 && loadedDisplacementCount >= validDisplacementCount && validDisplacementCount > 0 && !this.material) {
+                    if (loadedImageCount >= 2 && loadedDisplacementCount >= validDisplacementCount && validDisplacementCount > 0) {
                         this.onTexturesLoaded();
                     }
                 },
@@ -145,20 +127,8 @@ class ScrollDistortionEffect {
                             this.displacementTexture = texture;
                         }
 
-                        // Check if we should try to initialize
-                        const shouldTryInit = loadedImageCount >= 2 && loadedDisplacementCount >= validDisplacementCount && validDisplacementCount > 0;
-                        if (shouldTryInit && !this.material) {
-                            // If we have a pending initial index, check if that texture is loaded
-                            if (this.pendingInitialIndex !== undefined && this.pendingInitialIndex >= 0) {
-                                if (this.textures[this.pendingInitialIndex]) {
-                                    // Pending texture is loaded, initialize now
-                                    this.onTexturesLoaded();
-                                }
-                                // Otherwise, keep waiting
-                            } else {
-                                // No pending index, normal initialization
-                                this.onTexturesLoaded();
-                            }
+                        if (loadedImageCount >= 2 && loadedDisplacementCount >= validDisplacementCount && validDisplacementCount > 0) {
+                            this.onTexturesLoaded();
                         }
                     },
                     undefined,
@@ -171,28 +141,18 @@ class ScrollDistortionEffect {
     }
 
     onTexturesLoaded() {
-        // Wait for at least first 2 image textures and at least one displacement to load
+        // Wait for at least first 2 image textures and displacement to load
         if (!this.textures[0] || !this.textures[1] || !this.displacementTexture || this.material) {
             return;
         }
 
-        // If there's a pending initial image index, wait for that specific texture to load
+        this.createMaterial();
+        this.createMesh();
+        
+        // If there's a pending initial image index, apply it now
         if (this.pendingInitialIndex !== undefined) {
-            const pendingIndex = this.pendingInitialIndex;
-            // Check if the pending texture is loaded
-            if (this.textures[pendingIndex]) {
-                this.createMaterial();
-                this.createMesh();
-                this.applyInitialImage(pendingIndex);
-                this.pendingInitialIndex = undefined;
-            } else {
-                // Texture not loaded yet, will be handled when it loads
-                return;
-            }
-        } else {
-            // No pending initial index, proceed with normal initialization
-            this.createMaterial();
-            this.createMesh();
+            this.applyInitialImage(this.pendingInitialIndex);
+            this.pendingInitialIndex = undefined;
         }
     }
 
@@ -636,15 +596,25 @@ class ScrollDistortionEffect {
 
     // Internal method to apply initial image (called when textures are ready)
     applyInitialImage(index) {
-        if (!this.material || !this.textures || !this.textures[index]) {
+        if (!this.material) {
+            console.warn('applyInitialImage: Material not ready');
             return;
         }
 
         const safeIndex = Math.max(0, Math.min(index, this.config.images.length - 1));
         
+        // Check if the texture is loaded, if not wait a bit
+        if (!this.textures || !this.textures[safeIndex]) {
+            // Texture not loaded yet, try again after a delay
+            setTimeout(() => {
+                this.applyInitialImage(index);
+            }, 100);
+            return;
+        }
+        
         // Set displacement texture based on initial index
         const displacementIndex = this.getDisplacementIndex(safeIndex);
-        if (this.displacementTextures[displacementIndex]) {
+        if (this.displacementTextures && this.displacementTextures[displacementIndex]) {
             this.displacementTexture = this.displacementTextures[displacementIndex];
             this.material.uniforms.displacement.value = this.displacementTexture;
         }
@@ -655,6 +625,10 @@ class ScrollDistortionEffect {
         if (this.textures[nextIndex]) {
             this.material.uniforms.texture2.value = this.textures[nextIndex];
             this.material.uniforms.texRes2.value = this.textureResolutions[nextIndex] || new THREE.Vector2(1920, 1080);
+        } else {
+            // If next texture isn't loaded, use current one for texture2 as well
+            this.material.uniforms.texture2.value = this.textures[safeIndex];
+            this.material.uniforms.texRes2.value = this.textureResolutions[safeIndex] || new THREE.Vector2(1920, 1080);
         }
         this.material.uniforms.texRes1.value = this.textureResolutions[safeIndex] || new THREE.Vector2(1920, 1080);
         this.material.uniforms.progress.value = 0;
