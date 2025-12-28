@@ -54,46 +54,43 @@ class WebflowGLController {
             return;
         }
 
-        // Initialize WebGL engine
+        // Read initial state FIRST (before initializing engine)
+        // This ensures we know which state to show before engine setup
+        this.readInitialState(controller);
+
+        // Initialize WebGL engine (will use the initial state we just read)
         this.initEngine(container);
 
         // Setup MutationObserver to watch for class changes
         this.setupObserver(controller);
-
-        // Read initial state and set image
-        this.readInitialState(controller);
     }
 
     initEngine(container) {
-        // Create engine instance (it will need at least 2 images initially)
-        // We'll update it with all 11 images after initialization
-        const initialImages = this.config.imageUrls.length >= 2 
-            ? [this.config.imageUrls[0], this.config.imageUrls[1]]
-            : this.config.imageUrls;
-
-        // Use first displacement as initial (or empty array if not provided)
-        const initialDisplacement = this.config.displacementImageUrls.length > 0
-            ? [this.config.displacementImageUrls[0]]
-            : [];
-
+        // Store initial state index before any async operations
+        const initialStateIndex = this.currentState !== null ? this.currentState : 0;
+        
+        // Create engine instance with all images from the start
+        // This ensures proper initialization regardless of initial state
         this.engine = new ScrollDistortionEffect({
             parent: container,
-            images: initialImages,
-            displacementImages: initialDisplacement,
+            images: this.config.imageUrls,
+            displacementImages: this.config.displacementImageUrls.length > 0
+                ? [this.config.displacementImageUrls[0]] // Start with first, will load all 3 later
+                : [],
             intensity: this.config.intensity,
             transitionSpeed: this.config.transitionSpeed
         });
 
-        // Load all 11 images and all 3 displacement maps if provided
-        if (this.config.imageUrls.length > 2 || this.config.displacementImageUrls.length > 1) {
-            // Wait a bit for initial setup, then load all images
+        // Set the initial image index - it will wait for textures if needed
+        if (initialStateIndex !== 0) {
+            this.engine.setInitialImage(initialStateIndex);
+        }
+
+        // Load all 3 displacement maps if provided
+        if (this.config.displacementImageUrls.length === 3) {
+            // Wait a bit for initial setup, then load all displacement maps
             setTimeout(() => {
-                if (this.config.imageUrls.length > 2) {
-                    this.engine.setImages(this.config.imageUrls);
-                }
-                if (this.config.displacementImageUrls.length === 3) {
-                    this.engine.setDisplacementImages(this.config.displacementImageUrls);
-                }
+                this.engine.setDisplacementImages(this.config.displacementImageUrls);
             }, 100);
         }
     }
@@ -235,27 +232,12 @@ class WebflowGLController {
     readInitialState(controller) {
         const stateNumber = this.extractStateNumber(controller);
         
+        // Store the initial state number (will be used in initEngine)
         if (stateNumber !== null) {
             this.currentState = stateNumber;
-            
-            // Set initial image - the engine will handle waiting for textures if needed
-            // We'll check periodically and call setInitialImage when ready
-            const checkEngine = setInterval(() => {
-                if (this.engine) {
-                    // Call setInitialImage - it will handle the timing internally
-                    this.engine.setInitialImage(stateNumber);
-                    
-                    // If the material exists, we're good to go
-                    if (this.engine.material) {
-                        clearInterval(checkEngine);
-                    }
-                }
-            }, 100);
-
-            // Safety timeout - stop checking after 5 seconds
-            setTimeout(() => {
-                clearInterval(checkEngine);
-            }, 5000);
+        } else {
+            // Default to state 0 (first image) if no state class found
+            this.currentState = 0;
         }
     }
 

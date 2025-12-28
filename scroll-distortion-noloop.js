@@ -94,7 +94,25 @@ class ScrollDistortionEffect {
                     }
                     loadedImageCount++;
 
-                    if (loadedImageCount >= 2 && loadedDisplacementCount >= validDisplacementCount && validDisplacementCount > 0) {
+                    // Check if we should try to initialize
+                    const shouldTryInit = loadedImageCount >= 2 && loadedDisplacementCount >= validDisplacementCount && validDisplacementCount > 0;
+                    if (shouldTryInit && !this.material) {
+                        // If we have a pending initial index, check if that texture is loaded
+                        if (this.pendingInitialIndex !== undefined && this.pendingInitialIndex >= 0) {
+                            if (this.textures[this.pendingInitialIndex]) {
+                                // Pending texture is loaded, initialize now
+                                this.onTexturesLoaded();
+                            }
+                            // Otherwise, keep waiting - will be triggered when that texture loads
+                        } else {
+                            // No pending index, normal initialization
+                            this.onTexturesLoaded();
+                        }
+                    }
+                    
+                    // Also check if we just loaded the pending texture and should initialize
+                    if (this.pendingInitialIndex !== undefined && this.pendingInitialIndex === index && 
+                        loadedImageCount >= 2 && loadedDisplacementCount >= validDisplacementCount && validDisplacementCount > 0 && !this.material) {
                         this.onTexturesLoaded();
                     }
                 },
@@ -127,8 +145,20 @@ class ScrollDistortionEffect {
                             this.displacementTexture = texture;
                         }
 
-                        if (loadedImageCount >= 2 && loadedDisplacementCount >= validDisplacementCount && validDisplacementCount > 0) {
-                            this.onTexturesLoaded();
+                        // Check if we should try to initialize
+                        const shouldTryInit = loadedImageCount >= 2 && loadedDisplacementCount >= validDisplacementCount && validDisplacementCount > 0;
+                        if (shouldTryInit && !this.material) {
+                            // If we have a pending initial index, check if that texture is loaded
+                            if (this.pendingInitialIndex !== undefined && this.pendingInitialIndex >= 0) {
+                                if (this.textures[this.pendingInitialIndex]) {
+                                    // Pending texture is loaded, initialize now
+                                    this.onTexturesLoaded();
+                                }
+                                // Otherwise, keep waiting
+                            } else {
+                                // No pending index, normal initialization
+                                this.onTexturesLoaded();
+                            }
                         }
                     },
                     undefined,
@@ -146,13 +176,23 @@ class ScrollDistortionEffect {
             return;
         }
 
-        this.createMaterial();
-        this.createMesh();
-        
-        // If there's a pending initial image index, apply it now
+        // If there's a pending initial image index, wait for that specific texture to load
         if (this.pendingInitialIndex !== undefined) {
-            this.applyInitialImage(this.pendingInitialIndex);
-            this.pendingInitialIndex = undefined;
+            const pendingIndex = this.pendingInitialIndex;
+            // Check if the pending texture is loaded
+            if (this.textures[pendingIndex]) {
+                this.createMaterial();
+                this.createMesh();
+                this.applyInitialImage(pendingIndex);
+                this.pendingInitialIndex = undefined;
+            } else {
+                // Texture not loaded yet, will be handled when it loads
+                return;
+            }
+        } else {
+            // No pending initial index, proceed with normal initialization
+            this.createMaterial();
+            this.createMesh();
         }
     }
 
