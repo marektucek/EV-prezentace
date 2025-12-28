@@ -511,9 +511,10 @@ class ScrollDistortionEffect {
     }
 
     // Load images from array of URLs (for 13 images setup)
-    setImages(imageUrls) {
+    setImages(imageUrls, onComplete) {
         if (!Array.isArray(imageUrls) || imageUrls.length === 0) {
             console.error('setImages: Invalid imageUrls array');
+            if (onComplete) onComplete();
             return;
         }
 
@@ -534,6 +535,14 @@ class ScrollDistortionEffect {
         let loadedImageCount = 0;
         const self = this;
         const totalImages = imageUrls.length;
+        let hasCalledComplete = false;
+
+        const checkComplete = () => {
+            if (loadedImageCount === totalImages && !hasCalledComplete) {
+                hasCalledComplete = true;
+                if (onComplete) onComplete();
+            }
+        };
 
         imageUrls.forEach((imageSrc, index) => {
             loader.load(
@@ -567,10 +576,14 @@ class ScrollDistortionEffect {
                             self.onTexturesLoaded();
                         }
                     }
+                    
+                    checkComplete();
                 },
                 undefined,
                 (error) => {
                     console.error(`Failed to load image ${index}:`, imageSrc, error);
+                    loadedImageCount++;
+                    checkComplete();
                 }
             );
         });
@@ -597,18 +610,15 @@ class ScrollDistortionEffect {
     // Internal method to apply initial image (called when textures are ready)
     applyInitialImage(index) {
         if (!this.material) {
-            console.warn('applyInitialImage: Material not ready');
+            console.warn('applyInitialImage: Material not ready, will be applied when ready');
             return;
         }
 
         const safeIndex = Math.max(0, Math.min(index, this.config.images.length - 1));
         
-        // Check if the texture is loaded, if not wait a bit
+        // Check if the texture is loaded
         if (!this.textures || !this.textures[safeIndex]) {
-            // Texture not loaded yet, try again after a delay
-            setTimeout(() => {
-                this.applyInitialImage(index);
-            }, 100);
+            console.warn(`applyInitialImage: Texture ${safeIndex} not loaded yet`);
             return;
         }
         

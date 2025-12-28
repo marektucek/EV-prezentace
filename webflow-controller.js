@@ -92,21 +92,25 @@ class WebflowGLController {
         if (this.config.imageUrls.length > 2 || this.config.displacementImageUrls.length > 1) {
             // Wait a bit for initial setup, then load all images
             setTimeout(() => {
-                if (this.config.imageUrls.length > 2) {
-                    this.engine.setImages(this.config.imageUrls);
-                }
                 if (this.config.displacementImageUrls.length === 3) {
                     this.engine.setDisplacementImages(this.config.displacementImageUrls);
                 }
                 
-                // After images are loaded, set the initial image if needed
-                // Use a longer delay to ensure textures have time to load
-                if (initialStateIndex !== 0) {
+                if (this.config.imageUrls.length > 2) {
+                    // Load all images and set initial image when complete
+                    this.engine.setImages(this.config.imageUrls, () => {
+                        // All images loaded, now set the initial image if needed
+                        if (initialStateIndex !== 0 && this.engine) {
+                            this.engine.setInitialImage(initialStateIndex);
+                        }
+                    });
+                } else if (initialStateIndex !== 0) {
+                    // If we don't need to load more images, set initial image now
                     setTimeout(() => {
                         if (this.engine) {
                             this.engine.setInitialImage(initialStateIndex);
                         }
-                    }, 500);
+                    }, 200);
                 }
             }, 100);
         } else {
@@ -149,14 +153,25 @@ class WebflowGLController {
 
     extractStateNumber(element) {
         // Extract number from class like "state-1", "state-2", etc.
+        // If multiple state classes exist, use the highest number (most recent)
         const classList = Array.from(element.classList);
+        let maxState = null;
+        let maxNum = -1;
+        
         for (const className of classList) {
             const match = className.match(/^state-(\d+)$/);
             if (match) {
                 const num = parseInt(match[1], 10);
-                // Convert to 0-based index (state-1 -> 0, state-2 -> 1, etc.)
-                return Math.max(0, num - 1);
+                if (num > maxNum) {
+                    maxNum = num;
+                    maxState = num;
+                }
             }
+        }
+        
+        if (maxState !== null) {
+            // Convert to 0-based index (state-1 -> 0, state-2 -> 1, etc.)
+            return Math.max(0, maxState - 1);
         }
         return null;
     }
